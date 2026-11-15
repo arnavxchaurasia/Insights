@@ -506,7 +506,14 @@ Tick the box here when done.
 **Acceptance:** a fresh DB is built entirely by migrations; no manual DDL remains in
 app code; CI migrates then tests; every later schema change ships as a migration.
 
-#### [ ] H4 Pinned, reproducible dependencies
+#### [x] H4 Pinned, reproducible dependencies  — done 2026-11-15
+**Done:**
+- Created `backend/requirements.in` keeping abstract dependency specifications.
+- Created `backend/requirements-dev.in` for dev/CI tools (`ruff`, `mypy`, `pytest-cov`, `pip-tools`).
+- Compiled fully-pinned, reproducible `backend/requirements.txt` and `backend/requirements-dev.txt` using `pip-tools`.
+- Confirmed GitHub Actions CI installs from the pinned lockfiles, and frontend uses `npm ci` with `package-lock.json`.
+- **Verified:** All 25 pytests pass, `ruff` checks pass, `mypy` checks pass.
+**Original prompt:**
 > Pin backend deps: keep intent in `backend/requirements.in`, compile a fully
 > pinned `backend/requirements.txt` (uv or pip-tools). CI installs from the pinned
 > file. (Frontend already has `package-lock.json`; ensure CI uses `npm ci`.)
