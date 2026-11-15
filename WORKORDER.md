@@ -18,8 +18,18 @@ the context it needs, plus **acceptance criteria** so you can tell when it is do
 > `backend/...` from the repo root.
 >
 > Done: Phase 1 (feed + SSE bell), **6.1** (out of OneDrive), **6.2** (Postgres),
-> **6.3** (story de-duplication), **6.4** (CI). **Next task → 6.5 (deploy).**
-> Work top to bottom from there; the Progress tracker (section 4) is the source of truth.
+> **6.3** (story de-duplication), **6.4** (CI).
+>
+> **BUILD ORDER (decided 2026-11-15): build the product fully first, deploy last.**
+> Deployment (6.5a/6.5b) is **DEFERRED** — do it only after Phases 2–4 are done.
+> **Next task → 7.1 (Phase 2, AI model-provider interface).** Then work straight
+> through Phase 2 → Phase 3 → Phase 4, and come back to 6.5 at the very end.
+>
+> Phase 2 is the AI layer but is **not blocked** on choosing or paying for a model:
+> every AI task is built behind a swappable `LLMProvider` and tested with a
+> `FakeProvider` (tests never hit a real model). The real model endpoint + key
+> (decision C) and hosting (decision D) are both wired in later. The Progress
+> tracker (section 4) is the source of truth.
 
 ---
 
@@ -116,8 +126,8 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 1.5 | Switch to Postgres | [x] |
 | 1.5 | Story de-duplication (clustering) | [x] |
 | 1.5 | CI (tests + lint on push) | [x] |
-| 1.5 | Containerise (Dockerfiles + compose) | [ ] |
-| 1.5 | Provision & go live (needs host decision) | [!] |
+| 1.5 | Containerise (Dockerfiles + compose) | [ ] DEFERRED — after Phase 4 |
+| 1.5 | Provision & go live (needs host decision) | [ ] DEFERRED — after Phase 4 |
 | 2 | Model-provider interface (swappable) | [ ] |
 | 2 | Article tagging (sector / event type) | [ ] |
 | 2 | Impact records (first/second-order) | [ ] |
@@ -221,9 +231,13 @@ venv, node_modules, or secrets are tracked.
 > and `npx tsc --noEmit`. Cache pip and npm. No deploy step. Keep it under ~50 lines.
 **Acceptance:** workflow is valid YAML; jobs run the three checks; fails if any fails.
 
-### [ ] 6.5a Containerise (host-agnostic — do this now, no decision needed)
+> **⏸ DEFERRED (2026-11-15): do Section 6.5 LAST, after Phases 2–4.** The user
+> chose to build the product fully before hosting. Skip 6.5 for now; the next task
+> is **7.1**. Come back here only once Phase 4 is done.
+
+### [ ] 6.5a Containerise (host-agnostic — build when you reach deploy)
 **Why:** containers make the app runnable anywhere and are the unit every host
-below consumes. This step needs no hosting decision, so build it first.
+below consumes. Needs no hosting decision, so it is the first deploy step.
 **Prompt:**
 > Containerise the app for production. Create:
 > - `backend/Dockerfile` — install `backend/requirements.txt`, run
