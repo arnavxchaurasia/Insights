@@ -24,6 +24,9 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy app
+      - run: alembic upgrade head
+        env:
+          MI_DATABASE_URL: sqlite:///data/ci_test.db
       - run: python -m pytest -q
         env:
           MI_RUN_SCHEDULER: "false"

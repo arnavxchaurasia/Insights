@@ -44,6 +44,20 @@ This uses the `psycopg` (v3) driver, which is in `requirements.txt`. On a non-SQ
 
 **Never commit a real connection string.** Keep credentials in the deployment environment (or an uncommitted `backend/.env`); `.env` is git-ignored.
 
+### Database Migrations (Alembic)
+
+Database schema is managed with Alembic:
+
+- Apply pending migrations to head:
+  ```bash
+  alembic upgrade head
+  ```
+- Generate a new migration after changing models in `app/models.py`:
+  ```bash
+  alembic revision --autogenerate -m "describe_change"
+  ```
+The app runs `alembic upgrade head` automatically on startup.
+
 ## Feeds
 
 Add or disable sources in `backend/feeds.json`; changes apply on the next backend start. Only the headline, a short snippet and the link are stored. Moneycontrol, Business Standard and PIB are disabled because they reject automated readers (HTTP 403).
