@@ -191,7 +191,10 @@ grouped feed shows the "+N more" badge; ungrouped behaviour unchanged.
 `arnavxchaurasia/Insights` (public). Added `.github/workflows/ci.yml` with two
 jobs on push-to-main / any PR: **backend** (Python 3.14, cached pip, `pytest`
 with `MI_RUN_SCHEDULER=false`) and **frontend** (Node 24, cached npm, `npm ci`
-→ `npm run lint` → `npx tsc --noEmit`). Paths were adapted to the repo-root
+→ `npm run lint` → `npx next typegen` → `npx tsc --noEmit`). The `next typegen`
+step is required: Next emits its ambient `LayoutProps`/`PageProps` types into
+`.next/types` at build time, so a standalone `tsc` fails without it (the first CI
+run caught exactly this). Paths were adapted to the repo-root
 layout (`backend/`, `frontend/`) since the project is now the repo root, not
 `market-intel/`. `.gitignore` extended to exclude `*.db` and `.claude/`; no DB,
 venv, node_modules, or secrets are tracked.
