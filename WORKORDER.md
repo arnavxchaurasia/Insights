@@ -416,7 +416,7 @@ notification; unrelated ones do not.
 | E | FII/DII source | [ ] open (needed for 8.2) |
 | F | Commodity price source | [ ] open (needed for 8.3) |
 | G | Auth provider | [ ] open (needed for 9.1) |
-| H | Open-source LICENSE (MIT vs Apache-2.0) | [ ] open (needed for H13) |
+| H | Open-source LICENSE | ✅ **Apache-2.0** (decided 2026-11-15); `LICENSE` file added to repo root. |
 | I | PR-based flow on `main` | ✅ **Decided 2026-11-15** — every task is a PR; `main` gets branch protection (H12). 7.1 slipped in via direct push; don't repeat. |
 
 ---
@@ -547,10 +547,11 @@ branch removed.
 ### P3 — polish & ops niceties
 
 #### [ ] H13 Repo hygiene
-> Add `LICENSE` (**STOP and ask** which — MIT vs Apache-2.0), `CONTRIBUTING.md`
-> (run/test/PR steps), `.editorconfig`, a PR template + issue templates under
-> `.github/`, and `.pre-commit-config.yaml` (ruff for backend, eslint+prettier for
-> frontend).
+> `LICENSE` is already added (**Apache-2.0**, decision H). Add the rest:
+> `CONTRIBUTING.md` (run/test/PR steps), `.editorconfig`, a PR template + issue
+> templates under `.github/`, and `.pre-commit-config.yaml` (ruff for backend,
+> eslint+prettier for frontend). Add a short `NOTICE` file (project name + year) to
+> accompany the Apache licence.
 **Acceptance:** files present; `pre-commit run --all-files` works locally.
 
 #### [ ] H15 Error tracking (Sentry), opt-in
