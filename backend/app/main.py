@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated
@@ -22,7 +23,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     init_db(engine)
     with SessionLocal() as session:
         sync_sources(session)
@@ -214,7 +215,7 @@ def notifications(session: SessionDep, limit: Annotated[int, Query(ge=1, le=50)]
 async def stream(request: Request, since_id: Annotated[int, Query(ge=0)] = 0) -> StreamingResponse:
     """Server-Sent Events: pushes each new article (id > since_id) as it is ingested."""
 
-    async def event_generator():
+    async def event_generator() -> AsyncIterator[str]:
         last_id = since_id or await asyncio.to_thread(_current_max_id)
         while not await request.is_disconnected():
             for row in await asyncio.to_thread(_fetch_new, last_id):

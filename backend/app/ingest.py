@@ -8,6 +8,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import feedparser
@@ -56,7 +57,7 @@ def clean_text(raw: str, max_chars: int | None = None) -> str:
     return text
 
 
-def parse_published(entry, now: datetime) -> datetime:
+def parse_published(entry: Any, now: datetime) -> datetime:
     parsed = entry.get("published_parsed") or entry.get("updated_parsed")
     if parsed:
         return datetime.fromtimestamp(calendar.timegm(parsed), UTC).replace(tzinfo=None)
