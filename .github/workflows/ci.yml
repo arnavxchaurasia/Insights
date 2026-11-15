@@ -37,4 +37,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run lint
+      # Next.js emits ambient types (LayoutProps/PageProps) into .next/types;
+      # generate them so a standalone tsc can resolve them.
+      - run: npx next typegen
       - run: npx tsc --noEmit
