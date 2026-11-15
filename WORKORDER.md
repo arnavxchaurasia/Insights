@@ -100,7 +100,7 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 1.5 | Move repo out of OneDrive | [x] |
 | 1.5 | Switch to Postgres | [x] |
 | 1.5 | Story de-duplication (clustering) | [x] |
-| 1.5 | CI (tests + lint on push) | [ ] |
+| 1.5 | CI (tests + lint on push) | [x] |
 | 1.5 | Deploy (backend + frontend + db) | [ ] |
 | 2 | Model-provider interface (swappable) | [ ] |
 | 2 | Article tagging (sector / event type) | [ ] |
@@ -186,8 +186,16 @@ secret committed; tests pass.
 **Acceptance:** two headlines of the same story land in one cluster in a unit test;
 grouped feed shows the "+N more" badge; ungrouped behaviour unchanged.
 
-### [ ] 6.4 CI (tests + lint on push)
-**Prompt:**
+### [x] 6.4 CI (tests + lint on push)  — done 2026-11-15
+**Done:** repo initialised with git and pushed to GitHub
+`arnavxchaurasia/Insights` (public). Added `.github/workflows/ci.yml` with two
+jobs on push-to-main / any PR: **backend** (Python 3.14, cached pip, `pytest`
+with `MI_RUN_SCHEDULER=false`) and **frontend** (Node 24, cached npm, `npm ci`
+→ `npm run lint` → `npx tsc --noEmit`). Paths were adapted to the repo-root
+layout (`backend/`, `frontend/`) since the project is now the repo root, not
+`market-intel/`. `.gitignore` extended to exclude `*.db` and `.claude/`; no DB,
+venv, node_modules, or secrets are tracked.
+**Original prompt:**
 > Add a GitHub Actions workflow `.github/workflows/market-intel-ci.yml` that, on
 > push/PR touching `market-intel/**`, sets up Python 3.14 + Node 24, installs
 > backend deps and runs `pytest`, installs frontend deps and runs `npm run lint`
