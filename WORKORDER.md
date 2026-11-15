@@ -40,6 +40,12 @@ the context it needs, plus **acceptance criteria** so you can tell when it is do
 > adopting migrations now avoids reworking the hand-written `ALTER TABLE` hack
 > later. Suggested order: H1, H2, H4, H3 → then 7.2 onward, folding in the rest of
 > section 12 as you go.
+>
+> **More scope added (sections 14–17):** **Phase 5 (§14)** is the cross-impact
+> intelligence layer — the product's core thesis — built on Phase 2 impacts (do
+> after 7.3). **Phase 6 (§15)** is public-launch readiness (methodology/disclaimer
+> page, SEO, a11y) — do before deploy. **§16** is a data-ops backlog and **§17** a
+> small review-fix backlog; pick these up opportunistically.
 
 ---
 
@@ -150,6 +156,10 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 4 | Watchlists | [ ] |
 | 4 | Alerts (push to the bell) | [ ] |
 | Eng | Engineering hardening — P1/P2/P3 tasks (see §12) | [~] interleave with features |
+| 5 | Cross-impact: taxonomy, aggregation, graph, explorer, digest (§14) | [ ] |
+| 6 | Public readiness: methodology, SEO, a11y, analytics, UI states (§15) | [ ] |
+| Ops | Data ops: backfill, seed curation, govt source, cluster quality (§16) | [ ] |
+| Fix | Review-fix backlog (§17) | [ ] |
 
 ---
 
@@ -418,6 +428,8 @@ notification; unrelated ones do not.
 | G | Auth provider | [ ] open (needed for 9.1) |
 | H | Open-source LICENSE | ✅ **Apache-2.0** (decided 2026-11-15); `LICENSE` file added to repo root. |
 | I | PR-based flow on `main` | ✅ **Decided 2026-11-15** — every task is a PR; `main` gets branch protection (H12). 7.1 slipped in via direct push; don't repeat. |
+| J | Weekly-digest delivery (on-site vs email) | [ ] open (needed for 14.5; default on-site page) |
+| K | Analytics tool (privacy-friendly vs none) | [ ] open (needed for 15.4; default none) |
 
 ---
 
@@ -439,6 +451,10 @@ notification; unrelated ones do not.
 - **Schema drift without migrations** — new tables land each feature task; the
   current hand-written `ALTER TABLE` in `init_db` does not scale and risks dev/prod
   drift. Adopt Alembic early — see **H3**.
+- **Recommendation creep** — the Phase 5 aggregation, graph and explorer make the
+  product feel predictive; it must stay strictly descriptive ("this news suggests X
+  for sector Y"), always with sources + confidence + disclaimers, and never a
+  buy/sell call (SEBI). Enforce the disclaimer in every Phase 5/6 view.
 
 ---
 
@@ -575,3 +591,149 @@ Verifications done by the reviewing agent (this is a record, not a to-do):
   no key). **Finding:** committed directly to `main` instead of via a PR → tracked as
   **H12** (branch protection). Provider is correct but not yet consumed (expected; 7.2
   wires it in).
+
+---
+
+## 14. Phase 5 — Cross-impact intelligence (the core thesis)
+
+This is the product's reason to exist: *"distant, related events have deep impact on
+each other."* Phase 2 produces a per-article impact record; Phase 5 connects those
+records across articles into sector-level signals and a relationship graph. **Build
+after Phase 2 (needs 7.2 tags + 7.3 impacts); can interleave with Phase 3.**
+Everything here is **descriptive and informational** — it reports observed/model-
+inferred links from the news, with sources + confidence, and **never** a buy/sell
+call. All numbers carry their supporting article links and an "as of" window; no
+invented data.
+
+### [ ] 14.1 Canonical sector/entity taxonomy
+> Create a curated taxonomy so tags and impacts stay consistent: a seed
+> `backend/taxonomy.json` of sectors (+ optional sub-sectors) and an alias→canonical
+> map. Add a pure `normalize_sector(name) -> str | None` used by tagging (7.2) and
+> impacts (7.3) so "IT"/"Information Technology"/"Tech" collapse to one sector.
+> Unit-test the map. No model call.
+**Acceptance:** alias variants resolve to one canonical sector; tagging/impacts use it.
+
+### [ ] 14.2 Impact aggregation API
+> Add `GET /api/impact-summary?from=&to=&sector=` that aggregates stored impact
+> records (7.3) into cross-sector signals: per sector, counts of first/second-order
+> up/down/mixed, the dominant horizon, average confidence, and up to N supporting
+> article links. Pure SQL/Python over existing rows — **no model calls**. Every value
+> carries its source articles and the "as of" window. Tests with fixtures.
+**Acceptance:** returns sector signals with counts, confidence and source links; adds
+no inference beyond what is stored; tested.
+
+### [ ] 14.3 Sector relationship graph
+> Derive the cross-impact graph from stored impacts: directed edges
+> first-order sector → second-order sector, weighted by frequency and confidence.
+> Expose `GET /api/impact-graph?from=&to=` returning nodes (sectors) and edges (with
+> supporting article links + confidence). It DESCRIBES links observed in the news; it
+> is not advice. Pure aggregation; tested with fixtures.
+**Acceptance:** returns nodes + edges each backed by source articles and confidence;
+no buy/sell framing.
+
+### [ ] 14.4 Impact explorer UI
+> A `/impact` page: choose a sector and see what is affecting it now — first- and
+> second-order drivers with direction arrows, horizon, confidence bars and source
+> links, plus a simple visual of the relationship graph (14.3). Clearly labelled
+> "model-generated, informational only, not investment advice" with "as of" dates.
+> Renders gracefully with no data. Light/dark, phone width.
+**Acceptance:** the page shows a sector's drivers + the graph from the APIs;
+disclaimers visible; empty state handled.
+
+### [ ] 14.5 Weekly digest  (Decision J — delivery channel)
+> **Decision first (STOP and ask): on-site page only, or email too?** Build a `/digest`
+> page first (no email needed): the week's top cross-sector signals from 14.2 with
+> source links and disclaimers. If email is later chosen, send via a provider behind
+> config — no addresses or keys in git.
+**Acceptance:** `/digest` summarizes the week's top signals with sources; email is
+deferred behind decision J.
+
+---
+
+## 15. Phase 6 — Public-product readiness
+
+Polish needed before a public launch. **Do before deploy (section 6.5).**
+
+### [ ] 15.1 Methodology & disclaimer page
+> Add an `/about` (methodology) page: what Market Intel is, the data sources, how AI
+> impact inference works, what confidence means, update cadence, and a clear
+> disclaimer — informational only, not investment advice, no buy/sell calls (SEBI).
+> Link it in the header/footer.
+**Acceptance:** page explains sources + method + disclaimer and is linked site-wide.
+
+### [ ] 15.2 SEO & social metadata
+> Per-page metadata (unique title/description), Open Graph + Twitter cards, plus
+> `sitemap.xml` and `robots.txt` via Next metadata routes, and a site name/favicon.
+> No PII in URLs.
+**Acceptance:** pages have unique titles/descriptions + OG tags; sitemap and robots served.
+
+### [ ] 15.3 Accessibility pass
+> Audit a11y: semantic landmarks, visible focus states, keyboard nav for the bell and
+> menus, light/dark contrast, aria labels, reduced-motion. Fix issues and add
+> `eslint-plugin-jsx-a11y` to the frontend lint in CI.
+**Acceptance:** no critical a11y issues; a11y lint runs in CI.
+
+### [ ] 15.4 Privacy-friendly analytics  (Decision K — tool)
+> **Decision first (STOP and ask): which tool (self-hosted Plausible/Umami) or none.**
+> If chosen, add behind config — no cookies/PII, site-id/DSN from env not git, default
+> off.
+**Acceptance:** analytics active only when configured; no PII; nothing committed.
+
+### [ ] 15.5 Resilient UI states & performance
+> Polish empty/loading/error states across pages; add a global error boundary; confirm
+> the feed paginates well at scale; add DB indexes for the new filterable columns
+> (`event_type`, `sector`, `cluster_id`) and confirm the grouped query stays fast
+> (no N+1).
+**Acceptance:** every page has graceful states; indexes exist for filterable columns;
+no obvious N+1.
+
+---
+
+## 16. Data operations backlog
+
+### [ ] 16.1 Backfill clustering for existing articles
+> One-off idempotent `python -m app.backfill_clusters` that assigns `cluster_id` to
+> the pre-existing NULL-cluster rows using the ingestion logic, in time order, so
+> historical duplicates group too. Include a `--dry-run`. Test on a fixture.
+**Acceptance:** historical duplicate headlines share a cluster afterwards; re-running
+is a no-op.
+
+### [ ] 16.2 Seed-data curation workflow
+> The calendar, FII/DII, commodity, seasonality and taxonomy data are human-curated
+> JSON seeds. Add a JSON schema per seed, a `python -m app.validate_seeds` check wired
+> into CI, and README notes on how to edit them.
+**Acceptance:** a malformed seed fails CI; the edit process is documented.
+
+### [ ] 16.3 Replacement for blocked govt source  (Decision B)
+> Find a permitted, machine-readable govt/policy source to replace PIB (blocks bots).
+> **Do not spoof user agents.** If nothing free exists, STOP and ask about a licensed
+> feed or a manual seed.
+**Acceptance:** a permitted source is ingested, or the decision is escalated with options.
+
+### [ ] 16.4 Clustering quality improvements
+> From review feedback: guard against over-clustering very short headlines — the
+> `max(dice, containment)` score can hit 1.0 when one headline's tokens are a subset
+> of another's. Require a minimum informative-token count and/or `dice >= t` in
+> addition to containment. Fix the stale "Jaccard" comment in `cluster.py`. Add
+> regression tests for the short-headline case.
+**Acceptance:** a short generic headline no longer absorbs a longer unrelated story;
+tests cover it.
+
+---
+
+## 17. Review-fix backlog (small, from code review)
+
+### [ ] 17.1 README config accuracy
+> The frontend reads `NEXT_PUBLIC_API_URL` (`frontend/app/lib.ts`), but the README
+> "Configuration" section says `API_URL`. Correct the README.
+**Acceptance:** README names the actual env var.
+
+### [ ] 17.2 Clean up the test deprecation warning
+> `pytest` prints a Starlette/httpx `TestClient` deprecation warning. Resolve it
+> (pin/adjust the test client or dependency) so CI output stays clean; keep tests green.
+**Acceptance:** suite passes with no deprecation warning.
+
+### [ ] 17.3 Fix cluster.py docstring metric name
+> `cluster.py` calls its metric "Jaccard" but implements Dice + containment. Correct
+> the comment (also covered by 16.4; do whichever lands first).
+**Acceptance:** comment matches the implementation.
