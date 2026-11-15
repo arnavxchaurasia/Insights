@@ -1,6 +1,8 @@
 from pathlib import Path
 
-from app.db import make_engine, prepare_sqlite_dir
+from sqlalchemy import inspect
+
+from app.db import make_engine, prepare_sqlite_dir, run_migrations
 
 
 def test_prepare_sqlite_dir_creates_parent_for_file_sqlite(tmp_path: Path):
@@ -33,3 +35,21 @@ def test_make_engine_postgres_enables_pool_pre_ping_without_connecting():
     engine = make_engine("postgresql+psycopg://user:pass@db.example:5432/mi")
     assert engine.pool._pre_ping is True
     assert engine.dialect.name == "postgresql"
+
+
+def test_run_migrations_builds_fresh_database(tmp_path: Path):
+    db_file = tmp_path / "migrated.db"
+    db_url = f"sqlite:///{db_file.as_posix()}"
+    run_migrations(db_url)
+
+    engine = make_engine(db_url)
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    assert "sources" in tables
+    assert "articles" in tables
+    assert "alembic_version" in tables
+
+    article_cols = {col["name"] for col in inspector.get_columns("articles")}
+    assert "cluster_id" in article_cols
+    assert "url_hash" in article_cols
+    assert "title" in article_cols

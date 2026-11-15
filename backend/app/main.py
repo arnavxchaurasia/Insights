@@ -15,7 +15,7 @@ from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
-from .db import SessionLocal, engine, get_session, init_db
+from .db import SessionLocal, get_session, run_migrations
 from .ingest import run_ingest, sync_sources
 from .models import Article, Source
 
@@ -24,7 +24,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    init_db(engine)
+    run_migrations()
     with SessionLocal() as session:
         sync_sources(session)
     scheduler = None
