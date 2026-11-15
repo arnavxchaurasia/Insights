@@ -7,10 +7,18 @@ engineering practice. It is written to be executed by an **AI coding agent**:
 every task carries a self-contained, copy-paste **prompt** so the agent has all
 the context it needs, plus **acceptance criteria** so you can tell when it is done.
 
-> **Current status (2026-11-15).** Repo lives at `C:\Users\arnav\dev\market-intel`
-> (it is NOT a git repo yet — `git init` before the CI task 6.4). Done so far:
-> Phase 1 (feed + SSE notification bell), **6.1** (moved out of OneDrive), **6.2**
-> (Postgres support), **6.3** (story de-duplication). **Next task → 6.4 (CI: tests + lint on push).**
+> **Current status (2026-11-15).** The code is a git repo pushed to the **public
+> GitHub repo `arnavxchaurasia/Insights`** (https://github.com/arnavxchaurasia/Insights).
+> GitHub Actions CI runs on push to `main` and every PR and is **green**. Local
+> clone: `C:\Users\arnav\dev\market-intel`.
+>
+> **IMPORTANT — layout:** the project is the **repo root**. `backend/` and
+> `frontend/` sit at the top level; there is **no** `market-intel/` wrapper folder
+> anymore. Any path in this document written as `market-intel/backend/...` means
+> `backend/...` from the repo root.
+>
+> Done: Phase 1 (feed + SSE bell), **6.1** (out of OneDrive), **6.2** (Postgres),
+> **6.3** (story de-duplication), **6.4** (CI). **Next task → 6.5 (deploy).**
 > Work top to bottom from there; the Progress tracker (section 4) is the source of truth.
 
 ---
@@ -67,8 +75,9 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 > rules exactly:
 >
 > **Conventions**
-> - Backend code lives in `market-intel/backend/app/`, tests in
->   `market-intel/backend/tests/`. Frontend in `market-intel/frontend/app/`.
+> - The project is the **repo root** (`arnavxchaurasia/Insights`). Backend code
+>   lives in `backend/app/`, tests in `backend/tests/`. Frontend in `frontend/app/`.
+>   There is no `market-intel/` wrapper folder.
 > - Python: type-hint everything. Keep functions small and pure where possible.
 >   Datetimes are stored naive-UTC. Settings go in `app/config.py` (env prefix
 >   `MI_`), never hard-coded. Use SQLAlchemy 2.0 style (`select()`, `Mapped`).
@@ -81,8 +90,14 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 > - Accessibility & theming: every view must work in light and dark mode (use the
 >   existing Tailwind `dark:` classes) and at phone width.
 > - Do not add a dependency without saying why. Do not spoof browser User-Agents.
-> - After changes, run: backend `python -m pytest` + `npm run lint` +
->   `npx tsc --noEmit` in the frontend. Report what you ran and the result.
+> - After changes, run the SAME checks CI runs (`.github/workflows/ci.yml`):
+>   from `backend/` → `python -m pytest`; from `frontend/` → `npm run lint`,
+>   then `npx next typegen`, then `npx tsc --noEmit`. **`next typegen` is required
+>   before `tsc`** — Next emits its `LayoutProps`/`PageProps` ambient types into
+>   `.next/types`, so a standalone `tsc` fails without it. Report what you ran.
+> - Git & CI: do each task on a branch and open a PR to `main`; CI must be green
+>   before merge. NEVER commit secrets, `.env`, `*.db`, `.venv/`, `node_modules/`,
+>   or `.next/` (all already git-ignored). One focused change per commit.
 >
 > **Hard limits** — if a task needs a data source that blocks bots, or a secret/API
 > key, or a product decision, STOP and ask instead of guessing or scraping.
@@ -101,7 +116,8 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 1.5 | Switch to Postgres | [x] |
 | 1.5 | Story de-duplication (clustering) | [x] |
 | 1.5 | CI (tests + lint on push) | [x] |
-| 1.5 | Deploy (backend + frontend + db) | [ ] |
+| 1.5 | Containerise (Dockerfiles + compose) | [ ] |
+| 1.5 | Provision & go live (needs host decision) | [!] |
 | 2 | Model-provider interface (swappable) | [ ] |
 | 2 | Article tagging (sector / event type) | [ ] |
 | 2 | Impact records (first/second-order) | [ ] |
@@ -205,16 +221,48 @@ venv, node_modules, or secrets are tracked.
 > and `npx tsc --noEmit`. Cache pip and npm. No deploy step. Keep it under ~50 lines.
 **Acceptance:** workflow is valid YAML; jobs run the three checks; fails if any fails.
 
-### [ ] 6.5 Deploy
-**Decision first (STOP and ask):** where does it run? (A single VPS with Docker
-Compose is the simplest for a Python+Next+Postgres trio.) Once decided:
+### [ ] 6.5a Containerise (host-agnostic — do this now, no decision needed)
+**Why:** containers make the app runnable anywhere and are the unit every host
+below consumes. This step needs no hosting decision, so build it first.
 **Prompt:**
-> For the chosen host, write a `docker-compose.yml` (postgres + backend + frontend)
-> and a Dockerfile for each service, production-mode (`next build && next start`,
-> `uvicorn` with `--workers`). Put real config in env vars, not the compose file.
-> Document the deploy in the README. Do not include secrets.
-**Acceptance:** `docker compose up` runs all three locally; the public URL serves
-the feed and the live bell.
+> Containerise the app for production. Create:
+> - `backend/Dockerfile` — install `backend/requirements.txt`, run
+>   `uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2`. Use a slim
+>   Python 3.14 base. Add a `backend/.dockerignore` (exclude `.venv`, `data`,
+>   `__pycache__`, `*.db`).
+> - `frontend/Dockerfile` — multi-stage: `npm ci` + `npm run build`, then a slim
+>   runtime running `npm run start` on port 3000. Pass `NEXT_PUBLIC_API_URL` as a
+>   build arg (Next inlines `NEXT_PUBLIC_*` at build time). Add `frontend/.dockerignore`
+>   (exclude `node_modules`, `.next`).
+> - `docker-compose.yml` at the repo root wiring three services: `db` (postgres:17,
+>   named volume for data, healthcheck), `backend` (depends_on db healthy; env
+>   `MI_DATABASE_URL=postgresql+psycopg://...`, `MI_CORS_ORIGINS` = the frontend
+>   origin), `frontend` (build arg `NEXT_PUBLIC_API_URL` = the backend's public URL).
+>   All real values come from an `.env` file that compose reads — commit a
+>   `.env.example` with placeholder keys ONLY, never real secrets.
+> - A "Deploy" section in the README documenting `docker compose up --build` and the
+>   env vars.
+> Run `npx next typegen && npx tsc --noEmit` and `python -m pytest` still pass. Open a PR.
+**Acceptance:** `docker compose up --build` brings up all three locally; the feed
+loads and the notification bell shows "Live"; `.env.example` has placeholders only,
+no real secret is committed; CI green.
+
+### [!] 6.5b Provision & go live (STOP and ask — human decision + credentials)
+**Blocked on a human.** Pick ONE host and provide its credentials; Antigravity must
+not guess or create paid accounts. Options, simplest first:
+- **Single VPS + Docker Compose** (cheapest, most control) — a small cloud VM; point
+  a domain at it, run the compose file, put Caddy/Traefik in front for HTTPS.
+- **Managed PaaS** (e.g. Render / Railway / Fly.io) — managed Postgres + two services
+  from the Dockerfiles; least ops.
+- **Split**: frontend on Vercel, backend + Postgres on a PaaS.
+**When the human has chosen and supplied access**, the prompt is:
+> For the chosen host, add the deploy config (e.g. a `render.yaml` / `fly.toml`, or
+> the VPS reverse-proxy + systemd/compose setup), wire the production env vars
+> (`MI_DATABASE_URL`, `MI_CORS_ORIGINS`, `NEXT_PUBLIC_API_URL`) as host secrets —
+> never in git — run the DB once so tables are created, and document the exact deploy
+> steps in the README. Confirm the public URL serves the feed and a live bell.
+**Acceptance:** a public URL serves the feed and the live SSE bell; all secrets live
+in the host, not the repo. **Decision D (hosting) must be recorded in section 10.**
 
 ---
 
