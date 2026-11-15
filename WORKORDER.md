@@ -18,11 +18,11 @@ the context it needs, plus **acceptance criteria** so you can tell when it is do
 > `backend/...` from the repo root.
 >
 > Done: Phase 1 (feed + SSE bell), **6.1** (out of OneDrive), **6.2** (Postgres),
-> **6.3** (story de-duplication), **6.4** (CI).
+> **6.3** (story de-duplication), **6.4** (CI), **7.1** (model-provider interface).
 >
 > **BUILD ORDER (decided 2026-11-15): build the product fully first, deploy last.**
 > Deployment (6.5a/6.5b) is **DEFERRED** — do it only after Phases 2–4 are done.
-> **Next task → 7.1 (Phase 2, AI model-provider interface).** Then work straight
+> **Next task → 7.2 (Article tagging: sector / event type / entities).** Then work straight
 > through Phase 2 → Phase 3 → Phase 4, and come back to 6.5 at the very end.
 >
 > Phase 2 is the AI layer but is **not blocked** on choosing or paying for a model:
@@ -128,7 +128,7 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 1.5 | CI (tests + lint on push) | [x] |
 | 1.5 | Containerise (Dockerfiles + compose) | [ ] DEFERRED — after Phase 4 |
 | 1.5 | Provision & go live (needs host decision) | [ ] DEFERRED — after Phase 4 |
-| 2 | Model-provider interface (swappable) | [ ] |
+| 2 | Model-provider interface (swappable) | [x] |
 | 2 | Article tagging (sector / event type) | [ ] |
 | 2 | Impact records (first/second-order) | [ ] |
 | 2 | Impact UI on each article | [ ] |
@@ -282,8 +282,15 @@ in the host, not the repo. **Decision D (hosting) must be recorded in section 10
 
 ## 7. Phase 2 — Structure & AI inference (the differentiator)
 
-### [ ] 7.1 Model-provider interface (swappable)
-**Prompt:**
+### [x] 7.1 Model-provider interface (swappable)  — done 2026-11-15
+**Done:**
+- Created `app/ai/provider.py` defining abstract `LLMProvider` interface with `complete(system: str, user: str) -> str`.
+- Implemented `OpenAICompatibleProvider(LLMProvider)`: calls `{base_url}/chat/completions` using `httpx`, strictly checks for `api_key` (raises clear `ValueError` if missing or whitespace), passes `model` and `temperature=0.0`, handles HTTP errors and response payload extraction.
+- Implemented `FakeProvider(LLMProvider)`: returns canned JSON and tracks calls `(system, user)` for offline deterministic testing without hitting real models or incurring cost.
+- Implemented `get_llm_provider(settings_obj)` factory: picks `FakeProvider` when configured with `"fake"` (the default in `Settings`), or `OpenAICompatibleProvider` when `"real"` / `"openai"` is configured.
+- Added settings `llm_provider`, `llm_base_url`, `llm_model`, `llm_api_key`, and `llm_timeout_seconds` with `MI_LLM_*` env prefix in `app/config.py`.
+- **Verified:** 9 unit tests in `tests/test_ai_provider.py` covering factory, FakeProvider, OpenAICompatibleProvider completion, missing key validation, error handling, and malformed responses. All 25 backend pytest tests pass offline; frontend lint and typegen/tsc pass clean.
+**Original prompt:**
 > Create `app/ai/provider.py` defining a small interface `LLMProvider` with one
 > method `complete(system: str, user: str) -> str`. Implement two classes: a real
 > one calling a hosted OpenAI-compatible endpoint (base URL, model name, and API

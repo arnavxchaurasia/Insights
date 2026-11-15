@@ -17,5 +17,12 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     sse_poll_seconds: float = 4.0
 
+    # AI / LLM configuration (env prefix MI_LLM_*)
+    llm_provider: str = "fake"
+    llm_base_url: str = "https://api.openai.com/v1"
+    llm_model: str = "gpt-4o-mini"
+    llm_api_key: str | None = None
+    llm_timeout_seconds: float = 30.0
+
 
 settings = Settings()
