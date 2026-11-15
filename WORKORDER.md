@@ -482,7 +482,14 @@ Tick the box here when done.
 > violations.
 **Acceptance:** `ruff check` and `ruff format --check` pass in CI; no behaviour change.
 
-#### [ ] H2 Python static typing (mypy)
+#### [x] H2 Python static typing (mypy)  — done 2026-11-15
+**Done:**
+- Added mypy configuration to `backend/pyproject.toml` (`disallow_untyped_defs = true`, `warn_unused_ignores = true`, `no_implicit_optional = true`, `check_untyped_defs = true`, `warn_redundant_casts = true`).
+- Added third-party untyped library overrides for `feedparser` and `apscheduler.*`.
+- Added missing type annotations in `backend/app/ingest.py` (`parse_published`) and `backend/app/main.py` (`lifespan`, `event_generator`).
+- Added `mypy app` step to `.github/workflows/ci.yml`.
+- **Verified:** `mypy app` clean (0 errors in 9 source files); 25 pytest tests pass; ruff format and lint pass.
+**Original prompt:**
 > Add mypy for `backend/app` (reasonably strict: `disallow_untyped_defs`,
 > `warn_unused_ignores`, `no_implicit_optional`). Config in `pyproject.toml`. Add a
 > CI step `mypy app`. Fix real type errors; justify any `# type: ignore`.
