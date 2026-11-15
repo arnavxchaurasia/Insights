@@ -1,6 +1,7 @@
 import json
-import pytest
+
 import httpx
+import pytest
 
 from app.ai.provider import (
     FakeProvider,

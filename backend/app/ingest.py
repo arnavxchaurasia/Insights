@@ -4,11 +4,11 @@ import html
 import json
 import logging
 import re
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta, timezone
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-import uuid
 
 import feedparser
 import httpx
@@ -37,8 +37,12 @@ def utcnow() -> datetime:
 
 def normalize_url(url: str) -> str:
     parts = urlsplit(url.strip())
-    query = urlencode([(k, v) for k, v in parse_qsl(parts.query) if not _TRACKING_PARAMS.match(k.lower())])
-    return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), query, ""))
+    query = urlencode(
+        [(k, v) for k, v in parse_qsl(parts.query) if not _TRACKING_PARAMS.match(k.lower())]
+    )
+    return urlunsplit(
+        (parts.scheme.lower(), parts.netloc.lower(), parts.path.rstrip("/"), query, "")
+    )
 
 
 def url_hash(url: str) -> str:
@@ -76,7 +80,9 @@ class FetchResult:
     last_modified: str | None = None
 
 
-def fetch_feed(client: httpx.Client, url: str, etag: str | None, last_modified: str | None) -> FetchResult:
+def fetch_feed(
+    client: httpx.Client, url: str, etag: str | None, last_modified: str | None
+) -> FetchResult:
     headers = {}
     if etag:
         headers["If-None-Match"] = etag
@@ -85,14 +91,20 @@ def fetch_feed(client: httpx.Client, url: str, etag: str | None, last_modified: 
     try:
         response = client.get(url, headers=headers)
     except httpx.HTTPError as exc:
-        return FetchResult(status=f"error: {type(exc).__name__}", etag=etag, last_modified=last_modified)
+        return FetchResult(
+            status=f"error: {type(exc).__name__}", etag=etag, last_modified=last_modified
+        )
     if response.status_code == 304:
         return FetchResult(status="not modified", etag=etag, last_modified=last_modified)
     if response.status_code != 200:
-        return FetchResult(status=f"error: HTTP {response.status_code}", etag=etag, last_modified=last_modified)
+        return FetchResult(
+            status=f"error: HTTP {response.status_code}", etag=etag, last_modified=last_modified
+        )
     parsed = feedparser.parse(response.content)
     if not parsed.entries:
-        return FetchResult(status="error: no entries parsed", etag=etag, last_modified=last_modified)
+        return FetchResult(
+            status="error: no entries parsed", etag=etag, last_modified=last_modified
+        )
     return FetchResult(
         status="ok",
         entries=parsed.entries,
@@ -125,7 +137,9 @@ def store_entries(session: Session, source: Source, entries: list) -> int:
         )
     if not candidates:
         return 0
-    existing = set(session.scalars(select(Article.url_hash).where(Article.url_hash.in_(candidates))))
+    existing = set(
+        session.scalars(select(Article.url_hash).where(Article.url_hash.in_(candidates)))
+    )
     new = [article for key, article in candidates.items() if key not in existing]
     if not new:
         return 0
@@ -176,13 +190,18 @@ def run_ingest() -> dict[str, int]:
     counts: dict[str, int] = {}
     with SessionLocal() as session:
         sources = list(session.scalars(select(Source).where(Source.enabled)))
-        with httpx.Client(
-            timeout=settings.http_timeout_seconds,
-            follow_redirects=True,
-            headers={"User-Agent": settings.user_agent},
-        ) as client, ThreadPoolExecutor(max_workers=8) as pool:
-            results = list(pool.map(lambda s: fetch_feed(client, s.url, s.etag, s.last_modified), sources))
-        for source, result in zip(sources, results):
+        with (
+            httpx.Client(
+                timeout=settings.http_timeout_seconds,
+                follow_redirects=True,
+                headers={"User-Agent": settings.user_agent},
+            ) as client,
+            ThreadPoolExecutor(max_workers=8) as pool,
+        ):
+            results = list(
+                pool.map(lambda s: fetch_feed(client, s.url, s.etag, s.last_modified), sources)
+            )
+        for source, result in zip(sources, results, strict=True):
             added = store_entries(session, source, result.entries)
             source.etag = result.etag
             source.last_modified = result.last_modified

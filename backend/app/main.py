@@ -158,7 +158,11 @@ def list_articles(
         stmt = stmt.where(Article.source_id == source_id)
     if q and q.strip():
         stmt = stmt.where(Article.title.icontains(q.strip(), autoescape=True))
-    stmt = stmt.order_by(Article.published_at.desc(), Article.id.desc()).limit(limit + 1).offset(offset)
+    stmt = (
+        stmt.order_by(Article.published_at.desc(), Article.id.desc())
+        .limit(limit + 1)
+        .offset(offset)
+    )
     rows = list(session.scalars(stmt))
     items = [ArticleOut.model_validate(r) for r in rows[:limit]]
     return ArticlePage(items=items, has_more=len(rows) > limit)
@@ -175,7 +179,9 @@ def _to_notification(article: Article) -> dict:
     }
 
 
-def _fetch_notifications(session: Session, since_id: int, limit: int, newest_first: bool) -> list[dict]:
+def _fetch_notifications(
+    session: Session, since_id: int, limit: int, newest_first: bool
+) -> list[dict]:
     order = Article.id.desc() if newest_first else Article.id.asc()
     stmt = (
         select(Article)
@@ -220,5 +226,9 @@ async def stream(request: Request, since_id: Annotated[int, Query(ge=0)] = 0) ->
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )

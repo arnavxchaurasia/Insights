@@ -1,5 +1,4 @@
 from datetime import UTC, datetime, timedelta
-import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -46,7 +45,9 @@ def test_token_set_similarity_identical_and_disjoint():
 
 
 def test_same_story_clusters_together():
-    """Two headlines covering the same story across different publications must land in the same cluster."""
+    """Two headlines covering the same story across different publications must land in
+    the same cluster.
+    """
     h1 = "Sensex plunges 800 pts amid global sell-off; Nifty below 24,000"
     h2 = "Sensex crashes 800 points on global cues, Nifty slips below 24,000"
 
@@ -132,7 +133,9 @@ def test_db_session_factory():
     TestingSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
     with TestingSessionLocal() as session:
         src1 = Source(id=1, name="Mint", url="https://livemint.com/rss", category="news")
-        src2 = Source(id=2, name="BusinessLine", url="https://thehindubusinessline.com/rss", category="news")
+        src2 = Source(
+            id=2, name="BusinessLine", url="https://thehindubusinessline.com/rss", category="news"
+        )
         session.add_all([src1, src2])
         session.commit()
 
@@ -208,6 +211,7 @@ def test_db_session_factory():
 
 def test_api_articles_ungrouped_behavior(test_db_session_factory):
     """When group is False (default), all 5 articles are returned with also_covered_by=0."""
+
     def override_get_session():
         with test_db_session_factory() as session:
             yield session
@@ -232,6 +236,7 @@ def test_api_articles_ungrouped_behavior(test_db_session_factory):
 
 def test_api_articles_grouped_behavior(test_db_session_factory):
     """When group=true, returns one row per cluster with also_covered_by count."""
+
     def override_get_session():
         with test_db_session_factory() as session:
             yield session
@@ -250,7 +255,8 @@ def test_api_articles_grouped_behavior(test_db_session_factory):
         # Order should be newest first:
         # 1. SEBI (unclustered, id=5, newest) -> also_covered_by = 0
         # 2. Rupee (Cluster B, id=4) -> also_covered_by = 0
-        # 3. Market crash (Cluster A, newest row id=3) -> also_covered_by = 2 (3 articles in cluster - 1)
+        # 3. Market crash (Cluster A, newest row id=3) -> also_covered_by = 2
+        #    (3 articles in cluster - 1)
         assert items[0]["id"] == 5
         assert items[0]["also_covered_by"] == 0
 
