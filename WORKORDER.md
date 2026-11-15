@@ -18,7 +18,9 @@ the context it needs, plus **acceptance criteria** so you can tell when it is do
 > `backend/...` from the repo root.
 >
 > Done: Phase 1 (feed + SSE bell), **6.1** (out of OneDrive), **6.2** (Postgres),
-> **6.3** (story de-duplication), **6.4** (CI), **7.1** (model-provider interface).
+> **6.3** (story de-duplication), **6.4** (CI), **7.1** (model-provider interface),
+> **H1–H4** (Ruff, mypy, Alembic migrations, pinned deps — all via PRs #1–#4,
+> verified 2026-11-15).
 >
 > **BUILD ORDER (decided 2026-11-15): build the product fully first, deploy last.**
 > Deployment (6.5a/6.5b) is **DEFERRED** — do it only after Phases 2–4 are done.
@@ -553,14 +555,17 @@ owns the interval; documented.
 **Acceptance:** headers present on responses; CORS limited to configured origins; test.
 
 #### [ ] H12 Branch protection + PR flow  ← fixes the 7.1 process issue
+> **DEFERRED by the user (2026-11-15): leave branch protection off for now.** The PR
+> flow is already being followed voluntarily (H1–H4 all went through PRs #1–#4), so
+> this is low-urgency. Revisit before/at deploy. When enabling:
 > **Context:** Task 7.1 was pushed straight to `main`; the work order requires a PR
 > per task. Protect `main` on GitHub: require a PR, require the CI check to pass,
 > block direct pushes and force-pushes (require 1 review if feasible). Delete the
-> stale `task-7.1-model-provider` branch. **Admin rights needed — if the agent
-> cannot set this via `gh api`, STOP and ask the human to toggle it in GitHub
-> settings.**
+> stale `task-7.1-model-provider` branch (already gone locally) and the merged
+> `task-h1..h4` branches. **Admin rights needed — if the agent cannot set this via
+> `gh api`, STOP and ask the human to toggle it in GitHub settings.**
 **Acceptance:** direct pushes to `main` are rejected; CI is a required check; stale
-branch removed.
+branches removed.
 
 ### P2 — quality, tests & observability
 
@@ -622,6 +627,18 @@ Verifications done by the reviewing agent (this is a record, not a to-do):
   no key). **Finding:** committed directly to `main` instead of via a PR → tracked as
   **H12** (branch protection). Provider is correct but not yet consumed (expected; 7.2
   wires it in).
+
+- **2026-11-15 — Tasks H1–H4 (Ruff, mypy, Alembic, pinned deps): PASS.** All four
+  landed via proper PRs (#1–#4), each with CI green — the 7.1 direct-push issue is
+  fixed. Verified locally: `ruff check` + `ruff format --check` clean (15 files);
+  `mypy app` clean (9 files); `alembic upgrade head` builds a fresh DB
+  (`sources`, `articles`, `alembic_version`); **26** pytest pass. **Migration
+  adoption confirmed on real data:** running `run_migrations()` against the existing
+  753-row `app.db` stamped it at baseline `65b6f5261d25` and preserved all 753 rows
+  and `cluster_id` — no data loss. The manual `ALTER TABLE` is gone; `main.py` calls
+  `run_migrations()` on startup. Frontend lint/typegen/tsc still green. No bugs.
+  **Open:** H12 branch protection not yet enabled (see note on H12); the
+  Starlette/httpx test deprecation warning persists (tracked as **17.2**).
 
 ---
 
