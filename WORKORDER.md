@@ -467,7 +467,14 @@ Tick the box here when done.
 
 ### P1 — correctness, architecture & security baseline
 
-#### [ ] H1 Python lint + format (Ruff)
+#### [x] H1 Python lint + format (Ruff)  — done 2026-11-15
+**Done:**
+- Added `backend/pyproject.toml` targeting Python 3.14, line length 100, lint rules `["E", "F", "I", "UP", "B"]`.
+- Added `backend/requirements-dev.txt` with `ruff>=0.17.0`, `mypy>=2.4.0`, `pytest-cov>=7.0.0`.
+- Formatted and linted backend files (`ruff format`, `ruff check --fix`); fixed long lines and added `strict=True` to `zip()`.
+- Updated `.github/workflows/ci.yml` backend job to install `requirements-dev.txt` and run `ruff check .` and `ruff format --check .`.
+- **Verified:** `ruff check .` and `ruff format --check .` clean (0 warnings, 0 errors); 25 pytest tests pass; frontend lint/typegen/tsc clean.
+**Original prompt:**
 > Add Ruff as the backend linter+formatter. Put config in `backend/pyproject.toml`
 > (target py3.14, line length 100, rules E,F,I,UP,B). Add a dev-deps file
 > (`backend/requirements-dev.txt`) with `ruff`, `mypy`, `pytest-cov`. Add CI steps
