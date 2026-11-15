@@ -30,6 +30,16 @@ the context it needs, plus **acceptance criteria** so you can tell when it is do
 > `FakeProvider` (tests never hit a real model). The real model endpoint + key
 > (decision C) and hosting (decision D) are both wired in later. The Progress
 > tracker (section 4) is the source of truth.
+>
+> **Engineering hardening (NEW — section 12).** Features alone are not "end to end".
+> Section 12 adds the production-grade engineering scaffolding (migrations, linting,
+> typing, pinned deps, rate limiting, security headers, observability, branch
+> protection, …) as trackable tasks. **Do the P1 items there interleaved with the
+> feature work, not all at the end.** In particular, do **H3 (Alembic migrations)
+> and H1/H2 (Ruff + mypy) BEFORE 7.2**, because 7.2/7.3/8.x each add new tables —
+> adopting migrations now avoids reworking the hand-written `ALTER TABLE` hack
+> later. Suggested order: H1, H2, H4, H3 → then 7.2 onward, folding in the rest of
+> section 12 as you go.
 
 ---
 
@@ -139,6 +149,7 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 4 | User accounts | [ ] |
 | 4 | Watchlists | [ ] |
 | 4 | Alerts (push to the bell) | [ ] |
+| Eng | Engineering hardening — P1/P2/P3 tasks (see §12) | [~] interleave with features |
 
 ---
 
@@ -405,6 +416,8 @@ notification; unrelated ones do not.
 | E | FII/DII source | [ ] open (needed for 8.2) |
 | F | Commodity price source | [ ] open (needed for 8.3) |
 | G | Auth provider | [ ] open (needed for 9.1) |
+| H | Open-source LICENSE (MIT vs Apache-2.0) | [ ] open (needed for H13) |
+| I | PR-based flow on `main` | ✅ **Decided 2026-11-15** — every task is a PR; `main` gets branch protection (H12). 7.1 slipped in via direct push; don't repeat. |
 
 ---
 
@@ -419,3 +432,145 @@ notification; unrelated ones do not.
 - **Low-tier model quality** — keep every AI prompt strict ("JSON only"), validate
   output, and degrade gracefully. The provider is swappable, so a better model is
   a one-line config change.
+- **Multi-worker scheduler** — `APScheduler` runs in-process. Under
+  `uvicorn --workers N` (as the deferred Dockerfile specifies) every worker starts
+  its own scheduler, so ingestion runs N times and races. Must be fixed before
+  deploy — see **H10**.
+- **Schema drift without migrations** — new tables land each feature task; the
+  current hand-written `ALTER TABLE` in `init_db` does not scale and risks dev/prod
+  drift. Adopt Alembic early — see **H3**.
+
+---
+
+## 12. Engineering hardening (cross-cutting, industry practice)
+
+These make the repo genuinely end-to-end, not just feature-complete. Each is a
+normal task (branch → PR → green CI). **Priority tiers:** do **P1** interleaved
+with features (several are prerequisites — see the banner), then P2, then P3.
+Tick the box here when done.
+
+### P1 — correctness, architecture & security baseline
+
+#### [ ] H1 Python lint + format (Ruff)
+> Add Ruff as the backend linter+formatter. Put config in `backend/pyproject.toml`
+> (target py3.14, line length 100, rules E,F,I,UP,B). Add a dev-deps file
+> (`backend/requirements-dev.txt`) with `ruff`, `mypy`, `pytest-cov`. Add CI steps
+> `ruff check .` and `ruff format --check .` in the backend job. Fix all existing
+> violations.
+**Acceptance:** `ruff check` and `ruff format --check` pass in CI; no behaviour change.
+
+#### [ ] H2 Python static typing (mypy)
+> Add mypy for `backend/app` (reasonably strict: `disallow_untyped_defs`,
+> `warn_unused_ignores`, `no_implicit_optional`). Config in `pyproject.toml`. Add a
+> CI step `mypy app`. Fix real type errors; justify any `# type: ignore`.
+**Acceptance:** `mypy app` is clean in CI.
+
+#### [ ] H3 Database migrations (Alembic)  ← do before 7.2
+> Replace the hand-written `ALTER TABLE` in `app/db.py` with Alembic. Init
+> `backend/alembic/`, wire `env.py` to read `settings.database_url` and target
+> `Base.metadata`, autogenerate the initial migration (sources, articles incl.
+> `cluster_id`), and make startup run `alembic upgrade head` (or document it as a
+> deploy step) instead of `create_all`+DDL. Tests/CI run `alembic upgrade head`
+> against a temp SQLite DB before `pytest`. Document `alembic revision --autogenerate`
+> and `upgrade head` in the README.
+**Acceptance:** a fresh DB is built entirely by migrations; no manual DDL remains in
+app code; CI migrates then tests; every later schema change ships as a migration.
+
+#### [ ] H4 Pinned, reproducible dependencies
+> Pin backend deps: keep intent in `backend/requirements.in`, compile a fully
+> pinned `backend/requirements.txt` (uv or pip-tools). CI installs from the pinned
+> file. (Frontend already has `package-lock.json`; ensure CI uses `npm ci`.)
+**Acceptance:** installs are reproducible from the lockfiles; CI uses them.
+
+#### [ ] H10 Scheduler safe under multiple workers  ← fixes a real bug
+> Ensure ingestion runs exactly once regardless of web-worker count. Move the
+> scheduler out of the request workers: add a dedicated entrypoint
+> (`python -m app.worker`) that runs APScheduler, and have the web app start its
+> in-process scheduler ONLY when `settings.run_scheduler` is true AND a single
+> worker is used. In the (deferred) compose/deploy, run the worker as its own
+> service. Document the two run modes.
+**Acceptance:** with >1 web worker, ingestion does not duplicate; a single scheduler
+owns the interval; documented.
+
+#### [ ] H6 API rate limiting
+> Add per-IP rate limiting (e.g. `slowapi`) to the public REST endpoints, limits in
+> settings (default ~60/min), returning 429 + `Retry-After`. Give SSE its own
+> sensible policy (or exempt it). Unit-test the limiter.
+**Acceptance:** exceeding the limit returns 429; limits are configurable; tested.
+
+#### [ ] H7 Security headers + strict CORS
+> Add a backend middleware setting `X-Content-Type-Options: nosniff`,
+> `Referrer-Policy`, `X-Frame-Options: DENY`, and a minimal `Permissions-Policy`.
+> Add security headers in `frontend/next.config.ts`. Confirm CORS origins come only
+> from `settings.cors_origins` (no `*`).
+**Acceptance:** headers present on responses; CORS limited to configured origins; test.
+
+#### [ ] H12 Branch protection + PR flow  ← fixes the 7.1 process issue
+> **Context:** Task 7.1 was pushed straight to `main`; the work order requires a PR
+> per task. Protect `main` on GitHub: require a PR, require the CI check to pass,
+> block direct pushes and force-pushes (require 1 review if feasible). Delete the
+> stale `task-7.1-model-provider` branch. **Admin rights needed — if the agent
+> cannot set this via `gh api`, STOP and ask the human to toggle it in GitHub
+> settings.**
+**Acceptance:** direct pushes to `main` are rejected; CI is a required check; stale
+branch removed.
+
+### P2 — quality, tests & observability
+
+#### [ ] H5 Coverage + endpoint tests
+> Add `pytest-cov`; CI prints coverage and fails under a threshold (start 70%,
+> raise over time). Add API tests for `/api/articles` (category/source/q/paging/
+> group), `/api/sources`, `/api/notifications`, and health endpoints.
+**Acceptance:** coverage enforced in CI; the listed endpoints have tests.
+
+#### [ ] H8 Structured logging + request logging
+> Replace `logging.basicConfig` with structured (JSON) logging, level from env. Add
+> middleware logging each request once (method, path, status, duration_ms) with a
+> generated request id echoed in an `X-Request-ID` response header.
+**Acceptance:** logs are structured; each request logged once with an id.
+
+#### [ ] H9 Liveness & readiness endpoints
+> Add `/api/health/live` (process up) and `/api/health/ready` (cheap DB check,
+> returns 503 when the DB is unreachable); keep `/api/health`.
+**Acceptance:** readiness returns 503 when the DB is down; both documented.
+
+#### [ ] H11 Dependabot + secret scanning
+> Add `.github/dependabot.yml` (pip, npm, github-actions; weekly). Add a `gitleaks`
+> CI job on PRs. Verify it fails on a planted dummy secret, then remove the dummy.
+**Acceptance:** dependabot config valid; gitleaks runs in CI and catches a secret.
+
+#### [ ] H14 Frontend format + component tests
+> Add Prettier (+ `prettier --check` in CI). Add Vitest + React Testing Library with
+> a few tests (NotificationBell render/badge, a feed item, grouped "+N more" badge).
+**Acceptance:** `prettier --check` passes in CI; component tests run in CI.
+
+### P3 — polish & ops niceties
+
+#### [ ] H13 Repo hygiene
+> Add `LICENSE` (**STOP and ask** which — MIT vs Apache-2.0), `CONTRIBUTING.md`
+> (run/test/PR steps), `.editorconfig`, a PR template + issue templates under
+> `.github/`, and `.pre-commit-config.yaml` (ruff for backend, eslint+prettier for
+> frontend).
+**Acceptance:** files present; `pre-commit run --all-files` works locally.
+
+#### [ ] H15 Error tracking (Sentry), opt-in
+> Integrate Sentry in backend and frontend, enabled only when `MI_SENTRY_DSN` /
+> `NEXT_PUBLIC_SENTRY_DSN` is set; a no-op (and zero overhead) otherwise. No DSN in git.
+**Acceptance:** no DSN → nothing sent; with a DSN → an error is captured; no secret committed.
+
+#### [ ] H16 Caching / conditional requests on read APIs
+> Add short-TTL `Cache-Control` and `ETag` to `/api/articles` and `/api/sources`
+> (SSE stays uncached); return `304` on a matching `If-None-Match`.
+**Acceptance:** read responses carry `Cache-Control`/`ETag`; a matching ETag yields 304.
+
+---
+
+## 13. Review log
+
+Verifications done by the reviewing agent (this is a record, not a to-do):
+
+- **2026-11-15 — Task 7.1 (model-provider interface): PASS.** Read all code; 25
+  backend tests pass; CI green on `main`. Config defaults are safe (`llm_provider=fake`,
+  no key). **Finding:** committed directly to `main` instead of via a PR → tracked as
+  **H12** (branch protection). Provider is correct but not yet consumed (expected; 7.2
+  wires it in).
