@@ -123,9 +123,16 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 >   then `npx next typegen`, then `npx tsc --noEmit`. **`next typegen` is required
 >   before `tsc`** — Next emits its `LayoutProps`/`PageProps` ambient types into
 >   `.next/types`, so a standalone `tsc` fails without it. Report what you ran.
-> - Git & CI: do each task on a branch and open a PR to `main`; CI must be green
->   before merge. NEVER commit secrets, `.env`, `*.db`, `.venv/`, `node_modules/`,
->   or `.next/` (all already git-ignored). One focused change per commit.
+> - Git & CI: **a task is NOT done until its code is committed AND on `main` with CI
+>   green.** We build directly into `main` ("everything in main; we're only building
+>   it"), so finish every task by committing and merging/pushing it to `main` — do
+>   NOT leave work uncommitted or stranded on an unmerged branch (this happened with
+>   7.2 and made it look done when it wasn't). A PR that merges to `main` is fine; a
+>   dangling branch is not. Run the full CI-equivalent locally first (ruff check +
+>   `ruff format --check`, mypy, `alembic upgrade head`, pytest; frontend lint +
+>   `next typegen` + tsc). Any schema change ships an Alembic migration. NEVER commit
+>   secrets, `.env`, `*.db`, `.venv/`, `node_modules/`, or `.next/` (all git-ignored).
+>   One focused change per commit.
 >
 > **Hard limits** — if a task needs a data source that blocks bots, or a secret/API
 > key, or a product decision, STOP and ask instead of guessing or scraping.
