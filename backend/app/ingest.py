@@ -16,10 +16,12 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .ai import get_llm_provider, tag_article
+from .ai.provider import LLMProvider
 from .cluster import assign_cluster_id
 from .config import settings
 from .db import SessionLocal
-from .models import Article, Source
+from .models import Article, ArticleTag, Source
 
 log = logging.getLogger(__name__)
 
@@ -114,7 +116,9 @@ def fetch_feed(
     )
 
 
-def store_entries(session: Session, source: Source, entries: list) -> int:
+def store_entries(
+    session: Session, source: Source, entries: list, provider: LLMProvider | None = None
+) -> int:
     now = utcnow()
     candidates: dict[str, Article] = {}
     for entry in entries:
@@ -164,6 +168,19 @@ def store_entries(session: Session, source: Source, entries: list) -> int:
         article.cluster_id = cid
         recent_clusters.append((cid, article.title))
 
+    # AI tagging: classify each new article (sector / event_type / companies).
+    # Uses the configured provider (defaults to the offline FakeProvider); never
+    # crashes ingestion — tag_article degrades to event_type="other" on any error.
+    tag_provider = provider or get_llm_provider()
+    for article in new:
+        result = tag_article(tag_provider, article.title, article.summary)
+        article.tag = ArticleTag(
+            event_type=result.event_type,
+            sectors_json=json.dumps(result.sector),
+            companies_json=json.dumps(result.companies),
+            created_at=now,
+        )
+
     session.add_all(new)
     return len(new)
 
@@ -202,8 +219,9 @@ def run_ingest() -> dict[str, int]:
             results = list(
                 pool.map(lambda s: fetch_feed(client, s.url, s.etag, s.last_modified), sources)
             )
+        provider = get_llm_provider()
         for source, result in zip(sources, results, strict=True):
-            added = store_entries(session, source, result.entries)
+            added = store_entries(session, source, result.entries, provider)
             source.etag = result.etag
             source.last_modified = result.last_modified
             source.last_fetched_at = utcnow()

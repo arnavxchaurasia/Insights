@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
@@ -35,3 +36,35 @@ class Article(Base):
     cluster_id: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
 
     source: Mapped[Source] = relationship()
+    tag: Mapped[ArticleTag | None] = relationship(
+        back_populates="article", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class ArticleTag(Base):
+    __tablename__ = "article_tags"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    article_id: Mapped[int] = mapped_column(
+        ForeignKey("articles.id", ondelete="CASCADE"), unique=True, index=True
+    )
+    event_type: Mapped[str] = mapped_column(String(50), index=True, default="other")
+    sectors_json: Mapped[str] = mapped_column(Text, default="[]")
+    companies_json: Mapped[str] = mapped_column(Text, default="[]")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+    article: Mapped[Article] = relationship(back_populates="tag")
+
+    @property
+    def sectors(self) -> list[str]:
+        try:
+            return json.loads(self.sectors_json)
+        except Exception:
+            return []
+
+    @property
+    def companies(self) -> list[str]:
+        try:
+            return json.loads(self.companies_json)
+        except Exception:
+            return []

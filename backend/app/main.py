@@ -10,14 +10,14 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, field_serializer
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from .config import settings
 from .db import SessionLocal, get_session, run_migrations
 from .ingest import run_ingest, sync_sources
-from .models import Article, Source
+from .models import Article, ArticleTag, Source
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
@@ -84,6 +84,8 @@ class ArticleOut(BaseModel):
     source: SourceOut
     cluster_id: str | None = None
     also_covered_by: int = 0
+    event_type: str | None = None
+    sectors: list[str] = Field(default_factory=list)
 
     @field_serializer("published_at")
     def _ser(self, value: datetime) -> str | None:
@@ -93,6 +95,15 @@ class ArticleOut(BaseModel):
 class ArticlePage(BaseModel):
     items: list[ArticleOut]
     has_more: bool
+
+
+def _to_article_out(article: Article, also_covered_by: int = 0) -> ArticleOut:
+    out = ArticleOut.model_validate(article)
+    out.also_covered_by = max(0, also_covered_by)
+    if article.tag is not None:
+        out.event_type = article.tag.event_type
+        out.sectors = article.tag.sectors
+    return out
 
 
 @app.get("/api/health")
@@ -111,6 +122,8 @@ def list_articles(
     category: str | None = None,
     source_id: int | None = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
+    event_type: Annotated[str | None, Query(max_length=50)] = None,
+    sector: Annotated[str | None, Query(max_length=50)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     offset: Annotated[int, Query(ge=0)] = 0,
     group: bool = False,
@@ -133,40 +146,48 @@ def list_articles(
             sub = sub.where(Article.source_id == source_id)
         if q and q.strip():
             sub = sub.where(Article.title.icontains(q.strip(), autoescape=True))
+        if event_type or sector:
+            sub = sub.join(ArticleTag, ArticleTag.article_id == Article.id)
+            if event_type:
+                sub = sub.where(ArticleTag.event_type == event_type)
+            if sector:
+                sub = sub.where(ArticleTag.sectors_json.like(f'%"{sector}"%'))
 
         subq = sub.subquery()
         stmt = (
             select(Article, subq.c.cnt)
             .join(subq, Article.id == subq.c.article_id)
-            .options(joinedload(Article.source))
+            .options(joinedload(Article.source), joinedload(Article.tag))
             .where(subq.c.rn == 1)
             .order_by(Article.published_at.desc(), Article.id.desc())
             .limit(limit + 1)
             .offset(offset)
         )
         rows = session.execute(stmt).all()
-        items = []
-        for art, cnt in rows[:limit]:
-            out = ArticleOut.model_validate(art)
-            out.also_covered_by = max(0, cnt - 1)
-            items.append(out)
+        items = [_to_article_out(art, cnt - 1) for art, cnt in rows[:limit]]
         return ArticlePage(items=items, has_more=len(rows) > limit)
 
-    stmt = select(Article).options(joinedload(Article.source))
+    stmt = select(Article).options(joinedload(Article.source), joinedload(Article.tag))
     if category:
         stmt = stmt.join(Article.source).where(Source.category == category)
     if source_id:
         stmt = stmt.where(Article.source_id == source_id)
     if q and q.strip():
         stmt = stmt.where(Article.title.icontains(q.strip(), autoescape=True))
+    if event_type or sector:
+        stmt = stmt.join(ArticleTag, ArticleTag.article_id == Article.id)
+        if event_type:
+            stmt = stmt.where(ArticleTag.event_type == event_type)
+        if sector:
+            stmt = stmt.where(ArticleTag.sectors_json.like(f'%"{sector}"%'))
     stmt = (
         stmt.order_by(Article.published_at.desc(), Article.id.desc())
         .limit(limit + 1)
         .offset(offset)
     )
-    rows = list(session.scalars(stmt))
-    items = [ArticleOut.model_validate(r) for r in rows[:limit]]
-    return ArticlePage(items=items, has_more=len(rows) > limit)
+    article_rows = list(session.scalars(stmt))
+    items = [_to_article_out(a) for a in article_rows[:limit]]
+    return ArticlePage(items=items, has_more=len(article_rows) > limit)
 
 
 def _to_notification(article: Article) -> dict:
