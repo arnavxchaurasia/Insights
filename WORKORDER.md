@@ -24,7 +24,7 @@ the context it needs, plus **acceptance criteria** so you can tell when it is do
 >
 > **BUILD ORDER (decided 2026-11-15): build the product fully first, deploy last.**
 > Deployment (6.5a/6.5b) is **DEFERRED** — do it only after Phases 2–4 are done.
-> **Next task → 7.2 (Article tagging: sector / event type / entities).** Then work straight
+> **Next task → 7.3 (Impact records).** Then work straight
 > through Phase 2 → Phase 3 → Phase 4, and come back to 6.5 at the very end.
 >
 > Phase 2 is the AI layer but is **not blocked** on choosing or paying for a model:
@@ -147,7 +147,7 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 1.5 | Containerise (Dockerfiles + compose) | [ ] DEFERRED — after Phase 4 |
 | 1.5 | Provision & go live (needs host decision) | [ ] DEFERRED — after Phase 4 |
 | 2 | Model-provider interface (swappable) | [x] |
-| 2 | Article tagging (sector / event type) | [ ] |
+| 2 | Article tagging (sector / event type) | [x] |
 | 2 | Impact records (first/second-order) | [ ] |
 | 2 | Impact UI on each article | [ ] |
 | 3 | Economic calendar | [ ] |
@@ -324,8 +324,18 @@ in the host, not the repo. **Decision D (hosting) must be recorded in section 10
 **Acceptance:** factory returns the fake when configured; real provider reads config;
 no secret committed; tests pass.
 
-### [ ] 7.2 Article tagging (sector / event type / entities)
-**Prompt:**
+### [x] 7.2 Article tagging (sector / event type / entities)  — done 2026-11-16
+**Done:** `ArticleTag` model (one row per article, unique FK + CASCADE) +
+Alembic migration `57012fa04baa`. `app/ai/tagger.py` builds a strict JSON prompt,
+validates with a Pydantic `TagResult` (unknown `event_type` → `other`, lists
+sanitized), strips markdown fences, and `tag_article()` never crashes ingestion
+(degrades to `other` on any error). `store_entries` tags each new article via the
+configured `LLMProvider` (defaults to offline `FakeProvider`). `/api/articles`
+gained `?event_type=` and `?sector=` filters; `ArticleOut` exposes `event_type` +
+`sectors` (joinedload, no N+1). **Verified:** ruff + mypy clean; 37 pytest pass
+(11 new); real 753-row `app.db` migrated to head with no data loss. Committed to
+`main` (build-direct per user; no PR this time).
+**Original prompt:**
 > Add a tagging step that, for a new article, calls the `LLMProvider` with a strict
 > prompt asking ONLY for JSON: `{sector: string[], event_type: one of
 > [policy, govt_capex, commodity, flows, earnings, corporate_action, macro, other],
@@ -639,6 +649,15 @@ Verifications done by the reviewing agent (this is a record, not a to-do):
   `run_migrations()` on startup. Frontend lint/typegen/tsc still green. No bugs.
   **Open:** H12 branch protection not yet enabled (see note on H12); the
   Starlette/httpx test deprecation warning persists (tracked as **17.2**).
+
+- **2026-11-16 — Task 7.2 (article tagging): COMPLETED by the reviewer.** Antigravity
+  had left 7.2 ~40% done and uncommitted (tagger + ArticleTag model only), failing
+  ruff and missing the migration, ingestion wiring, API filters and tests. The
+  reviewer finished it: fixed ruff E501, added migration `57012fa04baa`, wired
+  tagging into `store_entries`, added `?event_type`/`?sector` filters + tag fields in
+  `ArticleOut`, and wrote 11 tests. Verified ruff + mypy clean, 37 pytest pass, real
+  753-row DB migrates with no data loss. Committed straight to `main` per the user
+  ("everything in main; we're only building it").
 
 ---
 
