@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 import httpx
 
@@ -74,12 +75,14 @@ class OpenAICompatibleProvider(LLMProvider):
 class FakeProvider(LLMProvider):
     """Returns canned responses for offline unit tests without network calls."""
 
-    def __init__(self, canned_response: str = "{}") -> None:
+    def __init__(self, canned_response: str | Callable[[str, str], str] = "{}") -> None:
         self.canned_response = canned_response
         self.calls: list[tuple[str, str]] = []
 
     def complete(self, system: str, user: str) -> str:
         self.calls.append((system, user))
+        if callable(self.canned_response):
+            return self.canned_response(system, user)
         return self.canned_response
 
 

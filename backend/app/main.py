@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from .config import settings
 from .db import SessionLocal, get_session, run_migrations
 from .ingest import run_ingest, sync_sources
-from .models import Article, ArticleTag, Source
+from .models import Article, ArticleImpact, ArticleTag, Source
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
@@ -86,8 +86,32 @@ class ArticleOut(BaseModel):
     also_covered_by: int = 0
     event_type: str | None = None
     sectors: list[str] = Field(default_factory=list)
+    has_impact: bool = False
 
     @field_serializer("published_at")
+    def _ser(self, value: datetime) -> str | None:
+        return _iso_utc(value)
+
+
+class SectorImpactOut(BaseModel):
+    sector: str
+    direction: str
+    why: str
+
+
+class ImpactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    article_id: int
+    first_order: list[SectorImpactOut]
+    second_order: list[SectorImpactOut]
+    horizon: str
+    confidence: float
+    evidence: str
+    created_at: datetime
+
+    @field_serializer("created_at")
     def _ser(self, value: datetime) -> str | None:
         return _iso_utc(value)
 
@@ -103,6 +127,7 @@ def _to_article_out(article: Article, also_covered_by: int = 0) -> ArticleOut:
     if article.tag is not None:
         out.event_type = article.tag.event_type
         out.sectors = article.tag.sectors
+    out.has_impact = getattr(article, "impact", None) is not None
     return out
 
 
@@ -157,7 +182,11 @@ def list_articles(
         stmt = (
             select(Article, subq.c.cnt)
             .join(subq, Article.id == subq.c.article_id)
-            .options(joinedload(Article.source), joinedload(Article.tag))
+            .options(
+                joinedload(Article.source),
+                joinedload(Article.tag),
+                joinedload(Article.impact),
+            )
             .where(subq.c.rn == 1)
             .order_by(Article.published_at.desc(), Article.id.desc())
             .limit(limit + 1)
@@ -167,7 +196,11 @@ def list_articles(
         items = [_to_article_out(art, cnt - 1) for art, cnt in rows[:limit]]
         return ArticlePage(items=items, has_more=len(rows) > limit)
 
-    stmt = select(Article).options(joinedload(Article.source), joinedload(Article.tag))
+    stmt = select(Article).options(
+        joinedload(Article.source),
+        joinedload(Article.tag),
+        joinedload(Article.impact),
+    )
     if category:
         stmt = stmt.join(Article.source).where(Source.category == category)
     if source_id:
@@ -188,6 +221,26 @@ def list_articles(
     article_rows = list(session.scalars(stmt))
     items = [_to_article_out(a) for a in article_rows[:limit]]
     return ArticlePage(items=items, has_more=len(article_rows) > limit)
+
+
+@app.get("/api/impacts", response_model=ImpactOut)
+def get_impact(
+    session: SessionDep,
+    article_id: Annotated[int, Query(description="ID of the article")],
+) -> ImpactOut:
+    impact = session.scalar(select(ArticleImpact).where(ArticleImpact.article_id == article_id))
+    if not impact:
+        raise HTTPException(status_code=404, detail="Impact record not found")
+    return ImpactOut(
+        id=impact.id,
+        article_id=impact.article_id,
+        first_order=[SectorImpactOut(**item) for item in impact.first_order],
+        second_order=[SectorImpactOut(**item) for item in impact.second_order],
+        horizon=impact.horizon,
+        confidence=impact.confidence,
+        evidence=impact.evidence,
+        created_at=impact.created_at,
+    )
 
 
 def _to_notification(article: Article) -> dict:

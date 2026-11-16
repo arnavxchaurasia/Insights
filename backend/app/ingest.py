@@ -16,12 +16,12 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .ai import get_llm_provider, tag_article
+from .ai import IMPACT_EVENT_TYPES, analyze_impact, get_llm_provider, tag_article
 from .ai.provider import LLMProvider
 from .cluster import assign_cluster_id
 from .config import settings
 from .db import SessionLocal
-from .models import Article, ArticleTag, Source
+from .models import Article, ArticleImpact, ArticleTag, Source
 
 log = logging.getLogger(__name__)
 
@@ -168,9 +168,11 @@ def store_entries(
         article.cluster_id = cid
         recent_clusters.append((cid, article.title))
 
-    # AI tagging: classify each new article (sector / event_type / companies).
+    # AI enrichment:
+    # 1. Tag each new article (sector / event_type / companies).
+    # 2. For policy/govt_capex/commodity/flows articles, infer transmission channels & impact.
     # Uses the configured provider (defaults to the offline FakeProvider); never
-    # crashes ingestion — tag_article degrades to event_type="other" on any error.
+    # crashes ingestion — tag_article degrades to "other", impact failures are dropped.
     tag_provider = provider or get_llm_provider()
     for article in new:
         result = tag_article(tag_provider, article.title, article.summary)
@@ -180,6 +182,27 @@ def store_entries(
             companies_json=json.dumps(result.companies),
             created_at=now,
         )
+        if result.event_type in IMPACT_EVENT_TYPES:
+            impact_res = analyze_impact(
+                tag_provider,
+                article.title,
+                article.summary,
+                event_type=result.event_type,
+                sectors=result.sector,
+            )
+            if impact_res is not None:
+                article.impact = ArticleImpact(
+                    first_order_json=json.dumps(
+                        [item.model_dump() for item in impact_res.first_order]
+                    ),
+                    second_order_json=json.dumps(
+                        [item.model_dump() for item in impact_res.second_order]
+                    ),
+                    horizon=impact_res.horizon,
+                    confidence=impact_res.confidence,
+                    evidence=impact_res.evidence,
+                    created_at=now,
+                )
 
     session.add_all(new)
     return len(new)

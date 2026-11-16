@@ -24,7 +24,7 @@ the context it needs, plus **acceptance criteria** so you can tell when it is do
 >
 > **BUILD ORDER (decided 2026-11-15): build the product fully first, deploy last.**
 > Deployment (6.5a/6.5b) is **DEFERRED** — do it only after Phases 2–4 are done.
-> **Next task → 7.3 (Impact records).** Then work straight
+> **Next task → 7.4 (Impact UI on each article).** Then work straight
 > through Phase 2 → Phase 3 → Phase 4, and come back to 6.5 at the very end.
 >
 > Phase 2 is the AI layer but is **not blocked** on choosing or paying for a model:
@@ -155,7 +155,7 @@ RSS / data sources ──▶ Ingestion (Python) ──▶ Postgres ──▶ Fas
 | 1.5 | Provision & go live (needs host decision) | [ ] DEFERRED — after Phase 4 |
 | 2 | Model-provider interface (swappable) | [x] |
 | 2 | Article tagging (sector / event type) | [x] |
-| 2 | Impact records (first/second-order) | [ ] |
+| 2 | Impact records (first/second-order) | [x] |
 | 2 | Impact UI on each article | [ ] |
 | 3 | Economic calendar | [ ] |
 | 3 | FII/DII flows panel | [ ] |
@@ -354,7 +354,7 @@ gained `?event_type=` and `?sector=` filters; `ArticleOut` exposes `event_type` 
 **Acceptance:** a fake-tagged article is filterable by sector and event type;
 malformed model output degrades gracefully; tests pass.
 
-### [ ] 7.3 Impact records (first / second-order)
+### [x] 7.3 Impact records (first / second-order) — done 2026-11-16
 **Prompt:**
 > Add an impact-inference step: for an article tagged as policy/govt_capex/
 > commodity/flows, call the model for JSON only:
@@ -665,6 +665,15 @@ Verifications done by the reviewing agent (this is a record, not a to-do):
   `ArticleOut`, and wrote 11 tests. Verified ruff + mypy clean, 37 pytest pass, real
   753-row DB migrates with no data loss. Committed straight to `main` per the user
   ("everything in main; we're only building it").
+
+- **2026-11-16 — Task 7.3 (impact records): COMPLETED.** Built `impact.py` with strict Pydantic
+  schema (`ImpactResult`, `SectorImpact`), validation rejecting invalid confidence, missing sources,
+  or non-standard directions/horizons, and markdown-fence stripping. Added `ArticleImpact` model
+  and Alembic migration `276a9725bc9b` creating `impacts` table. Wired into `store_entries`: policy,
+  govt_capex, commodity, and flows articles trigger impact inference; invalid model outputs are
+  dropped/logged without crashing ingestion. Added `GET /api/impacts?article_id=` endpoint (404 on
+  missing) and `has_impact` on `ArticleOut` (with joinedload). Added 14 new tests (51 total passed).
+  Ruff and mypy clean; frontend lint, next typegen, and tsc pass; real 753-row DB migrated cleanly.
 
 ---
 
